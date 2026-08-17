@@ -189,7 +189,7 @@ export default function Login() {
               <div style={{ backgroundColor: 'rgba(255,255,255,0.18)', border: '1.5px solid #ffffff', width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <i className="bi bi-shield-fill-check" style={{ color: '#ffffff', fontSize: '0.95rem' }}></i>
               </div>
-              <div className="text-start" style={{ fontSize: '0.68rem', color: '#ffffff', lineHeight: 1.4, fontWeight: 500 }}>
+              <div className="text-start developer-credit-text" style={{ fontSize: '0.68rem', color: '#ffffff', lineHeight: 1.4, fontWeight: 500 }}>
                 Developed by Central Management & Digital Marketing &ndash; Sri Venkateshwaraa Group of Institutions, Puducherry.
               </div>
             </div>
@@ -354,11 +354,18 @@ export default function Login() {
               </button>
             </form>
 
-            <div className="mt-5 text-center">
-              <span className="text-muted small">Need helper credentials or setup? </span>
-              <a href="mailto:digital@srivenkateshwaraa.edu.in" className="small fw-bold text-decoration-none" style={{ color: '#4EB849' }}>
-                Contact IT Support
-              </a>
+            {/* Secure Access Note */}
+            <div className="text-center my-4 position-relative">
+              <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: '1px', background: '#e2e8f0', zIndex: 1 }}></div>
+              <span style={{ position: 'relative', background: '#ffffff', padding: '0 1rem', color: '#94a3b8', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', zIndex: 2 }}>
+                Secure & Trusted Access
+              </span>
+            </div>
+            <div className="d-flex align-items-center justify-content-center gap-2 text-muted">
+              <i className="bi bi-shield-check text-success" style={{ fontSize: '1.15rem' }}></i>
+              <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748b' }}>
+                Your data is protected with enterprise-grade security
+              </span>
             </div>
           </div>
 

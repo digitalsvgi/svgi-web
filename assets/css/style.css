@@ -2043,8 +2043,8 @@ h1, h2, h3, h4, h5, h6 {
 .split-left-panel h5,
 .split-left-panel h6,
 .split-left-panel p,
-.split-left-panel span,
-.split-left-panel div {
+.split-left-panel .left-panel-desc,
+.split-left-panel .developer-credit-text {
     color: #ffffff !important;
 }
 .split-left-panel .text-white-50 {

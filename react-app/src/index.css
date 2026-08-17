@@ -2043,8 +2043,8 @@ h1, h2, h3, h4, h5, h6 {
 .split-left-panel h5,
 .split-left-panel h6,
 .split-left-panel p,
-.split-left-panel span,
-.split-left-panel div {
+.split-left-panel .left-panel-desc,
+.split-left-panel .developer-credit-text {
     color: #ffffff !important;
 }
 .split-left-panel .text-white-50 {
@@ -2065,5 +2065,74 @@ h1, h2, h3, h4, h5, h6 {
 .split-left-panel .service-card-box i {
     color: inherit !important;
 }
+
+/* Custom Login Form Styling */
+.form-check-input:checked {
+    background-color: #4EB849 !important;
+    border-color: #4EB849 !important;
+}
+.input-icon-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+.input-icon-wrapper .form-control {
+    padding-left: 3rem !important;
+    height: 52px;
+    border-radius: 12px;
+    background-color: #f8fafc;
+    border: 1.5px solid #e2e8f0;
+    font-weight: 500;
+}
+.input-icon-wrapper .form-control:focus {
+    background-color: #ffffff;
+    border-color: #0C4DA2;
+    box-shadow: 0 0 0 4px rgba(12, 77, 162, 0.1);
+}
+.input-icon-left {
+    position: absolute;
+    left: 1.15rem;
+    color: #94a3b8;
+    font-size: 1.1rem;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+}
+.form-role-pills {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    padding: 0.3rem;
+    border-radius: 12px;
+    display: flex;
+}
+.form-role-pill-btn {
+    font-weight: 600;
+    border-radius: 10px;
+    padding: 0.7rem 1rem;
+    color: #64748b;
+    border: none;
+    background: transparent;
+    transition: all 0.2s ease;
+}
+.form-role-pill-btn.active {
+    background: #0C4DA2 !important;
+    color: #ffffff !important;
+    box-shadow: 0 4px 12px rgba(12, 77, 162, 0.25) !important;
+}
+.btn-submit-signin {
+    height: 52px;
+    border-radius: 12px;
+    background: #0C4DA2;
+    color: #ffffff;
+    font-weight: 700;
+    box-shadow: 0 4px 15px rgba(12, 77, 162, 0.2);
+    transition: all 0.2s ease;
+}
+.btn-submit-signin:hover {
+    background: #093c80;
+    transform: translateY(-1px);
+}
+
 
 
