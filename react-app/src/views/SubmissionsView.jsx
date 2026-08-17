@@ -32,6 +32,8 @@ export default function SubmissionsView() {
   const [newPriority, setNewPriority] = useState('normal');
   const [newDocFiles, setNewDocFiles] = useState([]);
   const [newImageFiles, setNewImageFiles] = useState([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   
   // Edit Form Inputs
   const [editTitle, setEditTitle] = useState('');
@@ -159,9 +161,10 @@ export default function SubmissionsView() {
     if (!newDeptId || !newTitle) return;
 
     try {
+      setIsSubmitting(true);
       const selectedDept = departments.find(d => d.id === newDeptId);
       
-      // Convert document files to base64
+      // Convert document files to base64 for fallback
       const docFilesData = await Promise.all(
         newDocFiles.map(async (file) => {
           const base64 = await readFileAsBase64(file);
@@ -174,7 +177,7 @@ export default function SubmissionsView() {
         })
       );
 
-      // Convert image files to base64
+      // Convert image files to base64 for fallback
       const imgFilesData = await Promise.all(
         newImageFiles.map(async (file) => {
           const base64 = await readFileAsBase64(file);
@@ -187,7 +190,49 @@ export default function SubmissionsView() {
         })
       );
 
-      const combinedFiles = [...docFilesData, ...imgFilesData];
+      let combinedFiles = [...docFilesData, ...imgFilesData];
+
+      // Google Drive Upload try-catch block
+      try {
+        const functionsUrl = import.meta.env.VITE_CLOUD_FUNCTIONS_URL;
+        if (functionsUrl && (newDocFiles.length > 0 || newImageFiles.length > 0)) {
+          const formData = new FormData();
+          formData.append('collegeName', colleges[currentUser.collegeId] || 'Default College');
+          formData.append('departmentName', selectedDept?.name || 'Default Department');
+          
+          newDocFiles.forEach((file, index) => {
+            formData.append(`doc_${index}`, file);
+          });
+          newImageFiles.forEach((file, index) => {
+            formData.append(`img_${index}`, file);
+          });
+
+          const uploadRes = await fetch(`${functionsUrl}/uploadToDrive`, {
+            method: 'POST',
+            body: formData
+          });
+
+          if (uploadRes.ok) {
+            const driveData = await uploadRes.json();
+            if (driveData.success && driveData.files) {
+              // Map uploaded Google Drive details back to files!
+              combinedFiles = combinedFiles.map(f => {
+                const driveMatch = driveData.files.find(df => df.name === f.name);
+                if (driveMatch) {
+                  return {
+                    ...f,
+                    googleDriveFileId: driveMatch.googleDriveFileId,
+                    url: driveMatch.googleDriveUrl // Set Google Drive URL as main download/view url!
+                  };
+                }
+                return f;
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Google Drive Upload failed, falling back to local base64:", err);
+      }
 
       const docRef = await addDoc(collection(db, 'submissions'), {
         collegeId: currentUser.collegeId,
@@ -213,14 +258,18 @@ export default function SubmissionsView() {
       setNewDocFiles([]);
       setNewImageFiles([]);
       setShowAddModal(false);
+      alert("Submission added successfully!");
     } catch (err) {
       console.error(err);
+      alert("Failed to submit work record: " + err.message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   // 4. Handle Edit Updates
   const handleEditSubmit = async (e) => {
-    e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
     if (selectedSub.status !== 'pending' && currentUser.role === 'college_user') {
       alert("Only submissions in Pending status can be updated!");
       return;
@@ -256,9 +305,11 @@ export default function SubmissionsView() {
         priority: editPriority,
         editCount: (prev.editCount || 0) + 1
       }));
+      setIsEditing(false);
       alert("Submission updated successfully!");
     } catch (err) {
       console.error(err);
+      alert("Failed to update submission: " + err.message);
     }
   };
 
@@ -582,8 +633,22 @@ export default function SubmissionsView() {
                   </div>
                 </div>
                 <div className="modal-footer border-top-0 pt-0 px-4 pb-4">
-                  <button type="button" className="btn btn-light fw-bold" onClick={() => setShowAddModal(false)}>Cancel</button>
-                  <button type="submit" className="btn btn-primary fw-bold" style={{ backgroundColor: '#0C4DA2', borderColor: '#0C4DA2' }}>Upload & Submit</button>
+                  <button type="button" className="btn btn-light fw-bold" onClick={() => setShowAddModal(false)} disabled={isSubmitting}>Cancel</button>
+                  <button 
+                    type="submit" 
+                    className="btn btn-primary fw-bold d-flex align-items-center gap-2" 
+                    disabled={isSubmitting}
+                    style={{ backgroundColor: '#0C4DA2', borderColor: '#0C4DA2' }}
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                        <span>Uploading files...</span>
+                      </>
+                    ) : (
+                      <span>Upload & Submit</span>
+                    )}
+                  </button>
                 </div>
               </form>
             </div>
@@ -665,52 +730,117 @@ export default function SubmissionsView() {
                   </div>
                 </div>
 
-                {/* Title & Description card */}
-                <div className="mb-4">
-                  <span className="small text-muted fw-bold text-uppercase" style={{ fontSize: '0.65rem' }}>Title</span>
-                  <h4 className="fw-bold mb-2" style={{ color: '#0C4DA2' }}>{selectedSub.title}</h4>
-                  <span className="small text-muted fw-bold text-uppercase" style={{ fontSize: '0.65rem' }}>Description</span>
-                  <div className="card border rounded-4 p-3 bg-white shadow-xs">
-                    <div className="text-dark small" style={{ lineHeight: '1.6' }}>{selectedSub.description || 'No description provided.'}</div>
+                {/* Title & Description card / edit fields */}
+                {isEditing ? (
+                  <div className="mb-4 card border rounded-4 p-4 bg-white shadow-xs">
+                    <div className="mb-3">
+                      <label className="form-label small fw-bold text-muted text-uppercase" style={{ fontSize: '0.65rem' }}>Title</label>
+                      <input 
+                        type="text" 
+                        className="form-control" 
+                        value={editTitle} 
+                        onChange={(e) => setEditTitle(e.target.value)} 
+                        required 
+                      />
+                    </div>
+                    <div className="mb-0">
+                      <label className="form-label small fw-bold text-muted text-uppercase" style={{ fontSize: '0.65rem' }}>Description</label>
+                      <textarea 
+                        className="form-control" 
+                        rows="3" 
+                        value={editDescription} 
+                        onChange={(e) => setEditDescription(e.target.value)}
+                      ></textarea>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="mb-4">
+                    <span className="small text-muted fw-bold text-uppercase" style={{ fontSize: '0.65rem' }}>Title</span>
+                    <h4 className="fw-bold mb-2" style={{ color: '#0C4DA2' }}>{selectedSub.title}</h4>
+                    <span className="small text-muted fw-bold text-uppercase" style={{ fontSize: '0.65rem' }}>Description</span>
+                    <div className="card border rounded-4 p-3 bg-white shadow-xs">
+                      <div className="text-dark small" style={{ lineHeight: '1.6' }}>{selectedSub.description || 'No description provided.'}</div>
+                    </div>
+                  </div>
+                )}
 
-                {/* Status & Priority cards */}
-                <div className="row g-3 mb-4">
-                  <div className="col-12 col-md-6">
-                    <div className="card border rounded-4 p-3 bg-white d-flex flex-row align-items-center justify-content-between shadow-xs">
-                      <div className="d-flex align-items-center gap-2">
-                        <span className="rounded-circle bg-success bg-opacity-10 d-inline-block" style={{ width: '8px', height: '8px' }}></span>
-                        <span className="small fw-bold text-muted text-uppercase" style={{ fontSize: '0.65rem' }}>Operational Status</span>
+                {/* Status & Priority cards / edit fields */}
+                {isEditing ? (
+                  <div className="row g-3 mb-4">
+                    <div className="col-12 col-md-6">
+                      <div className="card border rounded-4 p-3 bg-white d-flex flex-row align-items-center justify-content-between shadow-xs h-100">
+                        <div className="d-flex align-items-center gap-2">
+                          <span className="rounded-circle bg-success bg-opacity-10 d-inline-block" style={{ width: '8px', height: '8px' }}></span>
+                          <span className="small fw-bold text-muted text-uppercase" style={{ fontSize: '0.65rem' }}>Operational Status</span>
+                        </div>
+                        <span className={`badge px-3 py-1.5 fw-bold text-uppercase`} style={{ 
+                          backgroundColor: selectedSub.status === 'completed' ? '#10b981' : (selectedSub.status === 'processing' ? '#f59e0b' : '#ef4444'),
+                          color: '#ffffff',
+                          borderRadius: '6px',
+                          fontSize: '0.72rem'
+                        }}>
+                          {selectedSub.status}
+                        </span>
                       </div>
-                      <span className={`badge px-3 py-1.5 fw-bold text-uppercase`} style={{ 
-                        backgroundColor: selectedSub.status === 'completed' ? '#10b981' : (selectedSub.status === 'processing' ? '#f59e0b' : '#ef4444'),
-                        color: '#ffffff',
-                        borderRadius: '6px',
-                        fontSize: '0.72rem'
-                      }}>
-                        {selectedSub.status}
-                      </span>
+                    </div>
+                    
+                    <div className="col-12 col-md-6">
+                      <div className="card border rounded-4 p-3 bg-white d-flex flex-row align-items-center justify-content-between shadow-xs h-100">
+                        <div className="d-flex align-items-center gap-2">
+                          <i className="bi bi-graph-up-arrow text-primary"></i>
+                          <span className="small fw-bold text-muted text-uppercase" style={{ fontSize: '0.65rem' }}>Priority</span>
+                        </div>
+                        <select 
+                          className="form-select form-select-sm" 
+                          style={{ width: '130px', fontWeight: 'bold' }}
+                          value={editPriority}
+                          onChange={(e) => setEditPriority(e.target.value)}
+                        >
+                          <option value="low">LOW</option>
+                          <option value="normal">NORMAL</option>
+                          <option value="high">HIGH</option>
+                          <option value="urgent">URGENT</option>
+                        </select>
+                      </div>
                     </div>
                   </div>
-                  
-                  <div className="col-12 col-md-6">
-                    <div className="card border rounded-4 p-3 bg-white d-flex flex-row align-items-center justify-content-between shadow-xs">
-                      <div className="d-flex align-items-center gap-2">
-                        <i className="bi bi-graph-up-arrow text-primary"></i>
-                        <span className="small fw-bold text-muted text-uppercase" style={{ fontSize: '0.65rem' }}>Priority</span>
+                ) : (
+                  <div className="row g-3 mb-4">
+                    <div className="col-12 col-md-6">
+                      <div className="card border rounded-4 p-3 bg-white d-flex flex-row align-items-center justify-content-between shadow-xs h-100">
+                        <div className="d-flex align-items-center gap-2">
+                          <span className="rounded-circle bg-success bg-opacity-10 d-inline-block" style={{ width: '8px', height: '8px' }}></span>
+                          <span className="small fw-bold text-muted text-uppercase" style={{ fontSize: '0.65rem' }}>Operational Status</span>
+                        </div>
+                        <span className={`badge px-3 py-1.5 fw-bold text-uppercase`} style={{ 
+                          backgroundColor: selectedSub.status === 'completed' ? '#10b981' : (selectedSub.status === 'processing' ? '#f59e0b' : '#ef4444'),
+                          color: '#ffffff',
+                          borderRadius: '6px',
+                          fontSize: '0.72rem'
+                        }}>
+                          {selectedSub.status}
+                        </span>
                       </div>
-                      <span className="badge px-3 py-1.5 fw-bold text-uppercase" style={{ 
-                        backgroundColor: '#64748b',
-                        color: '#ffffff',
-                        borderRadius: '6px',
-                        fontSize: '0.72rem'
-                      }}>
-                        {selectedSub.priority}
-                      </span>
+                    </div>
+                    
+                    <div className="col-12 col-md-6">
+                      <div className="card border rounded-4 p-3 bg-white d-flex flex-row align-items-center justify-content-between shadow-xs h-100">
+                        <div className="d-flex align-items-center gap-2">
+                          <i className="bi bi-graph-up-arrow text-primary"></i>
+                          <span className="small fw-bold text-muted text-uppercase" style={{ fontSize: '0.65rem' }}>Priority</span>
+                        </div>
+                        <span className="badge px-3 py-1.5 fw-bold text-uppercase" style={{ 
+                          backgroundColor: '#64748b',
+                          color: '#ffffff',
+                          borderRadius: '6px',
+                          fontSize: '0.72rem'
+                        }}>
+                          {selectedSub.priority}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
                 {/* Documents & Images Sections */}
                 {(() => {
@@ -925,10 +1055,22 @@ export default function SubmissionsView() {
 
               {/* Modal Footer (Screenshot 4) */}
               <div className="modal-footer border-top px-4 py-3 bg-light d-flex justify-content-end gap-2">
-                <button type="button" className="btn btn-outline-secondary fw-bold px-4 py-2" onClick={() => setShowDetailsModal(false)} style={{ borderRadius: '8px' }}>Close</button>
+                <button type="button" className="btn btn-outline-secondary fw-bold px-4 py-2" onClick={() => { setShowDetailsModal(false); setIsEditing(false); }} style={{ borderRadius: '8px' }}>Close</button>
                 {currentUser.role === 'college_user' && selectedSub.status === 'pending' && (
-                  <button type="button" className="btn btn-primary fw-bold px-4 py-2 d-flex align-items-center gap-1.5" onClick={handleEditSubmit} style={{ borderRadius: '8px', backgroundColor: '#0C4DA2', borderColor: '#0C4DA2' }}>
-                    <i className="bi bi-pencil"></i> Edit Task
+                  <button 
+                    type="button" 
+                    className="btn btn-primary fw-bold px-4 py-2 d-flex align-items-center gap-1.5" 
+                    onClick={() => {
+                      if (isEditing) {
+                        handleEditSubmit();
+                      } else {
+                        setIsEditing(true);
+                      }
+                    }} 
+                    style={{ borderRadius: '8px', backgroundColor: isEditing ? '#10b981' : '#0C4DA2', borderColor: isEditing ? '#10b981' : '#0C4DA2' }}
+                  >
+                    <i className={isEditing ? "bi bi-check-lg" : "bi bi-pencil"}></i>
+                    <span>{isEditing ? "Save Changes" : "Edit Task"}</span>
                   </button>
                 )}
               </div>
