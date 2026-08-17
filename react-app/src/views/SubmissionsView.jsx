@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { db } from '../firebase/firebaseConfig';
+import { db, storage } from '../firebase/firebaseConfig';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { 
   collection, 
   addDoc, 
@@ -50,14 +51,14 @@ export default function SubmissionsView() {
 
   const chatEndRef = useRef(null);
 
-  // File reader helper
-  const readFileAsBase64 = (file) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = error => reject(error);
-    });
+  // Upload file to Firebase Storage and return download URL
+  const uploadFileToStorage = async (file, folder) => {
+    const timestamp = Date.now();
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const storageRef = ref(storage, `submissions/${folder}/${timestamp}_${safeName}`);
+    const snapshot = await uploadBytes(storageRef, file);
+    const downloadURL = await getDownloadURL(snapshot.ref);
+    return downloadURL;
   };
 
   const handleViewFile = (file) => {
@@ -65,28 +66,8 @@ export default function SubmissionsView() {
       alert("No viewable file content was found.");
       return;
     }
-    const win = window.open();
-    if (win) {
-      win.document.write(`
-        <html>
-          <head>
-            <title>${file.name}</title>
-            <style>
-              body { margin: 0; display: flex; align-items: center; justify-content: center; background: #f1f5f9; font-family: sans-serif; }
-              iframe, img { width: 100%; height: 100vh; border: none; object-fit: contain; }
-            </style>
-          </head>
-          <body>
-            ${file.url.startsWith('data:image/') 
-              ? `<img src="${file.url}" alt="${file.name}" />` 
-              : `<iframe src="${file.url}"></iframe>`}
-          </body>
-        </html>
-      `);
-      win.document.close();
-    } else {
-      alert("Pop-up window was blocked. Please enable popups in your browser.");
-    }
+    // For Firebase Storage / Google Drive URLs open directly in new tab
+    window.open(file.url, '_blank');
   };
 
   // 1. Fetch Submissions, Colleges, and Departments
@@ -163,100 +144,50 @@ export default function SubmissionsView() {
     try {
       setIsSubmitting(true);
       const selectedDept = departments.find(d => d.id === newDeptId);
-      
-      // Convert document files to base64 for fallback
+      const folderName = `${currentUser.collegeId}_${newDeptId}`;
+
+      // Upload documents to Firebase Storage
       const docFilesData = await Promise.all(
         newDocFiles.map(async (file) => {
-          const base64 = await readFileAsBase64(file);
+          const url = await uploadFileToStorage(file, folderName);
           return {
-            name: file.name,
-            size: Math.round(file.size / 1024) + ' KB',
-            url: base64,
+            name: String(file.name),
+            size: String(Math.round(file.size / 1024)) + ' KB',
+            url: String(url),
             type: 'document'
           };
         })
       );
 
-      // Convert image files to base64 for fallback
+      // Upload images to Firebase Storage
       const imgFilesData = await Promise.all(
         newImageFiles.map(async (file) => {
-          const base64 = await readFileAsBase64(file);
+          const url = await uploadFileToStorage(file, folderName);
           return {
-            name: file.name,
-            size: Math.round(file.size / 1024) + ' KB',
-            url: base64,
+            name: String(file.name),
+            size: String(Math.round(file.size / 1024)) + ' KB',
+            url: String(url),
             type: 'image'
           };
         })
       );
 
-      let combinedFiles = [...docFilesData, ...imgFilesData];
+      const allFiles = [...docFilesData, ...imgFilesData];
 
-      // Google Drive Upload try-catch block
-      try {
-        const functionsUrl = import.meta.env.VITE_CLOUD_FUNCTIONS_URL;
-        if (functionsUrl && (newDocFiles.length > 0 || newImageFiles.length > 0)) {
-          const formData = new FormData();
-          formData.append('collegeName', colleges[currentUser.collegeId] || 'Default College');
-          formData.append('departmentName', selectedDept?.name || 'Default Department');
-          
-          newDocFiles.forEach((file, index) => {
-            formData.append(`doc_${index}`, file);
-          });
-          newImageFiles.forEach((file, index) => {
-            formData.append(`img_${index}`, file);
-          });
-
-          const uploadRes = await fetch(`${functionsUrl}/uploadToDrive`, {
-            method: 'POST',
-            body: formData
-          });
-
-          if (uploadRes.ok) {
-            const driveData = await uploadRes.json();
-            if (driveData.success && driveData.files) {
-              // Map uploaded Google Drive details back to files!
-              combinedFiles = combinedFiles.map(f => {
-                const driveMatch = driveData.files.find(df => df.name === f.name);
-                if (driveMatch) {
-                  return {
-                    ...f,
-                    googleDriveFileId: driveMatch.googleDriveFileId,
-                    url: driveMatch.googleDriveUrl // Set Google Drive URL as main download/view url!
-                  };
-                }
-                return f;
-              });
-            }
-          }
-        }
-      } catch (err) {
-        console.error("Google Drive Upload failed, falling back to local base64:", err);
-      }
-
-      // Sanitize files to ensure Firestore only receives plain primitives (resolves "invalid nested entity")
-      const sanitizedFiles = combinedFiles.map(f => ({
-        name: String(f.name || ''),
-        size: String(f.size || ''),
-        url: String(f.url || ''),
-        type: String(f.type || 'document'),
-        googleDriveFileId: String(f.googleDriveFileId || '')
-      }));
-
-      const docRef = await addDoc(collection(db, 'submissions'), {
-        collegeId: currentUser.collegeId,
-        departmentId: newDeptId,
-        departmentName: selectedDept?.name || '',
-        title: newTitle,
-        description: newDescription,
+      await addDoc(collection(db, 'submissions'), {
+        collegeId: String(currentUser.collegeId || ''),
+        departmentId: String(newDeptId || ''),
+        departmentName: String(selectedDept?.name || ''),
+        title: String(newTitle || ''),
+        description: String(newDescription || ''),
         status: 'pending',
-        priority: newPriority,
+        priority: String(newPriority || 'normal'),
         editCount: 0,
-        createdBy: currentUser.uid,
-        createdByName: currentUser.name,
+        createdBy: String(currentUser.uid || ''),
+        createdByName: String(currentUser.name || ''),
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
-        files: sanitizedFiles
+        files: allFiles
       });
 
       // Clear Form
@@ -267,7 +198,7 @@ export default function SubmissionsView() {
       setNewDocFiles([]);
       setNewImageFiles([]);
       setShowAddModal(false);
-      alert("Submission added successfully!");
+      alert('Submission added successfully!');
     } catch (err) {
       console.error(err);
       alert("Failed to submit work record: " + err.message);
