@@ -234,6 +234,15 @@ export default function SubmissionsView() {
         console.error("Google Drive Upload failed, falling back to local base64:", err);
       }
 
+      // Sanitize files to ensure Firestore only receives plain primitives (resolves "invalid nested entity")
+      const sanitizedFiles = combinedFiles.map(f => ({
+        name: String(f.name || ''),
+        size: String(f.size || ''),
+        url: String(f.url || ''),
+        type: String(f.type || 'document'),
+        googleDriveFileId: String(f.googleDriveFileId || '')
+      }));
+
       const docRef = await addDoc(collection(db, 'submissions'), {
         collegeId: currentUser.collegeId,
         departmentId: newDeptId,
@@ -247,7 +256,7 @@ export default function SubmissionsView() {
         createdByName: currentUser.name,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
-        files: combinedFiles
+        files: sanitizedFiles
       });
 
       // Clear Form
