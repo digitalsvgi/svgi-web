@@ -121,41 +121,77 @@ export function UsersView() {
     return () => unsubUsers();
   }, []);
 
-  const roleLabels = {
-    super_admin: 'Super Admin',
-    admin: 'Central Admin',
-    college_user: 'College User'
-  };
-
   return (
     <div className="container-fluid py-4 bg-white rounded-4 shadow-sm">
       <h5 className="fw-bold mb-1" style={{ color: '#4EB849' }}>User Directory</h5>
       <p className="text-muted small mb-4">View authorized users, roles, and institutional affiliations.</p>
 
       <div className="table-responsive">
-        <table className="table table-hover align-middle">
-          <thead className="table-light">
-            <tr>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Affiliated College</th>
-              <th>Role</th>
-              <th>Status</th>
+        <table className="table table-hover align-middle m-0">
+          <thead className="table-light" style={{ borderBottom: '2.5px solid #4EB849' }}>
+            <tr style={{ fontSize: '0.78rem', textTransform: 'uppercase', color: '#475569' }}>
+              <th>ID</th>
+              <th>User Profile</th>
+              <th>Email Address</th>
+              <th>System Role</th>
+              <th>Institutional Scope</th>
+              <th>Account Status</th>
+              <th className="text-end">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {users.map((u) => (
+            {users.map((u, index) => (
               <tr key={u.id}>
-                <td className="fw-bold text-dark">{u.name}</td>
-                <td>{u.email}</td>
-                <td className="small text-muted">{colleges[u.collegeId] || 'System (Central)'}</td>
+                <td className="text-muted small">{index + 1}</td>
                 <td>
-                  <span className="badge rounded-pill text-white px-2.5 py-1 small" style={{ backgroundColor: u.role === 'super_admin' ? '#0C4DA2' : '#64748b' }}>
-                    {roleLabels[u.role] || u.role}
+                  <div className="d-flex align-items-center gap-3">
+                    <div className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold" 
+                         style={{ 
+                           width: '38px', 
+                           height: '38px', 
+                           backgroundColor: u.role === 'super_admin' ? '#0C4DA2' : (u.role === 'admin' ? '#4EB849' : '#8b5cf6'), 
+                           fontSize: '0.95rem' 
+                         }}>
+                      {u.name ? u.name.trim().charAt(0).toUpperCase() : 'U'}
+                    </div>
+                    <div className="fw-bold text-dark">{u.name}</div>
+                  </div>
+                </td>
+                <td style={{ fontSize: '0.9rem', color: '#475569' }}>{u.email}</td>
+                <td>
+                  <span className="badge bg-secondary bg-opacity-10 text-secondary px-2.5 py-1.5 small fw-bold" style={{ fontSize: '0.7rem' }}>
+                    {u.role ? u.role.replace('_', ' ').toUpperCase() : 'MEMBER'}
                   </span>
                 </td>
                 <td>
-                  <span className="text-success small fw-semibold">&bull; Active</span>
+                  <div className="d-flex align-items-center gap-2 text-muted small">
+                    {u.collegeId ? (
+                      <>
+                        <i className="bi bi-bank text-secondary"></i>
+                        <span>{colleges[u.collegeId] || u.collegeId}</span>
+                      </>
+                    ) : (
+                      <>
+                        <i className="bi bi-shield-check text-primary"></i>
+                        <span>System (Central)</span>
+                      </>
+                    )}
+                  </div>
+                </td>
+                <td>
+                  <span className="badge bg-success bg-opacity-10 text-success px-2.5 py-1.5 rounded-pill small fw-semibold" style={{ fontSize: '0.78rem' }}>
+                    &bull; Active
+                  </span>
+                </td>
+                <td className="text-end">
+                  <div className="d-flex gap-2 justify-content-end">
+                    <button className="btn btn-sm btn-outline-primary border-0 bg-transparent p-1" title="Edit User">
+                      <i className="bi bi-pencil-square" style={{ fontSize: '1rem', color: '#0C4DA2' }}></i>
+                    </button>
+                    <button className="btn btn-sm text-muted border-0 bg-transparent p-1" title="Actions">
+                      <i className="bi bi-three-dots" style={{ fontSize: '1.1rem' }}></i>
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

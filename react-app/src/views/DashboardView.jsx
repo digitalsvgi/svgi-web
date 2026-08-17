@@ -15,20 +15,25 @@ export default function DashboardView() {
     completed: 0
   });
 
+  const [collegesList, setCollegesList] = useState([]);
+  const [submissionsList, setSubmissionsList] = useState([]);
   const [seedingResult, setSeedingResult] = useState('');
   const [seedingLoading, setSeedingLoading] = useState(false);
 
   useEffect(() => {
-    // Set up real-time listener for submissions counts
+    // Real-time submissions listener
     const unsubSub = onSnapshot(collection(db, 'submissions'), (snapshot) => {
+      const list = [];
       let pending = 0, processing = 0, completed = 0;
       snapshot.forEach(doc => {
         const data = doc.data();
+        list.push({ id: doc.id, ...data });
         if (data.status === 'completed') completed++;
         else if (data.status === 'processing') processing++;
         else pending++;
       });
 
+      setSubmissionsList(list);
       setStats(prev => ({
         ...prev,
         submissions: snapshot.size,
@@ -38,23 +43,37 @@ export default function DashboardView() {
       }));
     });
 
-    // Load static counts
-    const loadCounts = async () => {
+    // Real-time colleges listener
+    const unsubCol = onSnapshot(collection(db, 'colleges'), (snapshot) => {
+      const list = [];
+      snapshot.forEach(doc => {
+        list.push({ id: doc.id, ...doc.data() });
+      });
+      setCollegesList(list);
+      setStats(prev => ({
+        ...prev,
+        colleges: snapshot.size
+      }));
+    });
+
+    // Load static department count
+    const loadDeptCount = async () => {
       try {
-        const colSnap = await getDocs(collection(db, 'colleges'));
         const deptSnap = await getDocs(collection(db, 'departments'));
         setStats(prev => ({
           ...prev,
-          colleges: colSnap.size,
           departments: deptSnap.size
         }));
       } catch (e) {
         console.error(e);
       }
     };
-    loadCounts();
+    loadDeptCount();
 
-    return () => unsubSub();
+    return () => {
+      unsubSub();
+      unsubCol();
+    };
   }, []);
 
   const handleSeed = async () => {
@@ -70,8 +89,25 @@ export default function DashboardView() {
     }
   };
 
+  // Compile college-wise stats list matching Screenshot 2
+  const getCollegesStats = () => {
+    return collegesList.map(col => {
+      const colSubs = submissionsList.filter(s => s.collegeId === col.id);
+      return {
+        id: col.id,
+        name: col.name,
+        total: colSubs.length,
+        pending: colSubs.filter(s => s.status === 'pending').length,
+        processing: colSubs.filter(s => s.status === 'processing').length,
+        completed: colSubs.filter(s => s.status === 'completed').length
+      };
+    });
+  };
+
+  const collegeStatsData = getCollegesStats();
+
   return (
-    <div className="container-fluid py-4">
+    <div className="container-fluid py-2">
       {/* Welcome Banner */}
       <div className="card border-0 rounded-4 shadow-sm mb-4 p-4 text-white" style={{
         backgroundImage: 'linear-gradient(135deg, #0C4DA2 0%, #08346e 100%)'
@@ -139,9 +175,60 @@ export default function DashboardView() {
         </div>
       </div>
 
+      {/* College-wise Submission Statistics Grid (Screenshot 2) */}
+      <div className="card border-0 rounded-4 shadow-sm mb-4 p-4 bg-white">
+        <h5 className="fw-bold text-dark mb-3" style={{ fontSize: '1.1rem' }}>College Submission Metrics Overview</h5>
+        <div className="table-responsive">
+          <table className="table align-middle table-hover m-0">
+            <thead className="table-light">
+              <tr style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: '#64748b' }}>
+                <th style={{ padding: '1rem' }}>College Name</th>
+                <th className="text-center" style={{ padding: '1rem', width: '100px' }}>Total</th>
+                <th className="text-center" style={{ padding: '1rem', width: '100px' }}>Pending</th>
+                <th className="text-center" style={{ padding: '1rem', width: '100px' }}>Processing</th>
+                <th className="text-center" style={{ padding: '1rem', width: '100px' }}>Completed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {collegeStatsData.length === 0 ? (
+                <tr>
+                  <td colSpan="5" className="text-center text-muted py-4 small">No college metrics found. Please seed data.</td>
+                </tr>
+              ) : (
+                collegeStatsData.map((col) => (
+                  <tr key={col.id}>
+                    <td className="fw-bold text-dark" style={{ padding: '1.1rem 1rem', fontSize: '0.9rem' }}>{col.name}</td>
+                    <td className="text-center" style={{ padding: '1.1rem 1rem' }}>
+                      <span className="badge rounded-pill bg-secondary bg-opacity-10 text-secondary fw-bold px-3 py-1.5" style={{ fontSize: '0.8rem' }}>
+                        {col.total}
+                      </span>
+                    </td>
+                    <td className="text-center" style={{ padding: '1.1rem 1rem' }}>
+                      <span className="badge rounded-pill bg-danger bg-opacity-10 text-danger fw-bold px-3 py-1.5" style={{ fontSize: '0.8rem' }}>
+                        {col.pending}
+                      </span>
+                    </td>
+                    <td className="text-center" style={{ padding: '1.1rem 1rem' }}>
+                      <span className="badge rounded-pill bg-warning bg-opacity-10 text-warning fw-bold px-3 py-1.5" style={{ fontSize: '0.8rem' }}>
+                        {col.processing}
+                      </span>
+                    </td>
+                    <td className="text-center" style={{ padding: '1.1rem 1rem' }}>
+                      <span className="badge rounded-pill bg-success bg-opacity-10 text-success fw-bold px-3 py-1.5" style={{ fontSize: '0.8rem' }}>
+                        {col.completed}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {/* Database Seeder Button (Super Admin Only) */}
       {currentUser?.role === 'super_admin' && (
-        <div className="card border-0 rounded-4 shadow-sm mb-4 p-4 bg-white">
+        <div className="card border-0 rounded-4 shadow-sm p-4 bg-white">
           <h5 className="fw-bold text-dark mb-2">Firestore Seeding Utility</h5>
           <p className="text-muted small">Use this utility to automatically populate your new Cloud Firestore database with the 8 Colleges and 97 Departments configured in the SVGI system rules.</p>
           <div className="d-flex align-items-center gap-3">
