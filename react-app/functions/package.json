@@ -1,0 +1,13 @@
+{
+  "name": "functions",
+  "description": "Firebase Cloud Functions for SVGI CWM Google Drive uploads",
+  "version": "1.0.0",
+  "main": "index.js",
+  "dependencies": {
+    "firebase-admin": "^11.8.0",
+    "firebase-functions": "^4.3.1",
+    "googleapis": "^118.0.0",
+    "busboy": "^1.6.0"
+  },
+  "private": true
+}
