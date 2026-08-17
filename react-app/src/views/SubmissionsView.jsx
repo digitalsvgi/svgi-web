@@ -30,7 +30,8 @@ export default function SubmissionsView() {
   const [newDescription, setNewDescription] = useState('');
   const [newDeptId, setNewDeptId] = useState('');
   const [newPriority, setNewPriority] = useState('normal');
-  const [newFiles, setNewFiles] = useState([]);
+  const [newDocFiles, setNewDocFiles] = useState([]);
+  const [newImageFiles, setNewImageFiles] = useState([]);
   
   // Edit Form Inputs
   const [editTitle, setEditTitle] = useState('');
@@ -46,6 +47,45 @@ export default function SubmissionsView() {
   const [statusNotes, setStatusNotes] = useState('');
 
   const chatEndRef = useRef(null);
+
+  // File reader helper
+  const readFileAsBase64 = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = error => reject(error);
+    });
+  };
+
+  const handleViewFile = (file) => {
+    if (!file.url || file.url === '#') {
+      alert("No viewable file content was found.");
+      return;
+    }
+    const win = window.open();
+    if (win) {
+      win.document.write(`
+        <html>
+          <head>
+            <title>${file.name}</title>
+            <style>
+              body { margin: 0; display: flex; align-items: center; justify-content: center; background: #f1f5f9; font-family: sans-serif; }
+              iframe, img { width: 100%; height: 100vh; border: none; object-fit: contain; }
+            </style>
+          </head>
+          <body>
+            ${file.url.startsWith('data:image/') 
+              ? `<img src="${file.url}" alt="${file.name}" />` 
+              : `<iframe src="${file.url}"></iframe>`}
+          </body>
+        </html>
+      `);
+      win.document.close();
+    } else {
+      alert("Pop-up window was blocked. Please enable popups in your browser.");
+    }
+  };
 
   // 1. Fetch Submissions, Colleges, and Departments
   useEffect(() => {
@@ -120,6 +160,35 @@ export default function SubmissionsView() {
 
     try {
       const selectedDept = departments.find(d => d.id === newDeptId);
+      
+      // Convert document files to base64
+      const docFilesData = await Promise.all(
+        newDocFiles.map(async (file) => {
+          const base64 = await readFileAsBase64(file);
+          return {
+            name: file.name,
+            size: Math.round(file.size / 1024) + ' KB',
+            url: base64,
+            type: 'document'
+          };
+        })
+      );
+
+      // Convert image files to base64
+      const imgFilesData = await Promise.all(
+        newImageFiles.map(async (file) => {
+          const base64 = await readFileAsBase64(file);
+          return {
+            name: file.name,
+            size: Math.round(file.size / 1024) + ' KB',
+            url: base64,
+            type: 'image'
+          };
+        })
+      );
+
+      const combinedFiles = [...docFilesData, ...imgFilesData];
+
       const docRef = await addDoc(collection(db, 'submissions'), {
         collegeId: currentUser.collegeId,
         departmentId: newDeptId,
@@ -133,13 +202,7 @@ export default function SubmissionsView() {
         createdByName: currentUser.name,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
-        // Mock attached files array for demo/test uploads
-        files: newFiles.map(f => ({
-          name: f.name,
-          size: Math.round(f.size / 1024) + ' KB',
-          url: '#',
-          googleDriveFileId: 'mock_gd_' + Math.random().toString(36).substr(2, 9)
-        }))
+        files: combinedFiles
       });
 
       // Clear Form
@@ -147,7 +210,8 @@ export default function SubmissionsView() {
       setNewDescription('');
       setNewDeptId('');
       setNewPriority('normal');
-      setNewFiles([]);
+      setNewDocFiles([]);
+      setNewImageFiles([]);
       setShowAddModal(false);
     } catch (err) {
       console.error(err);
@@ -479,30 +543,42 @@ export default function SubmissionsView() {
                     ></textarea>
                   </div>
 
-                  <div className="row g-3">
+                  <div className="row g-3 mb-3">
                     <div className="col-md-6">
-                      <label className="form-label small fw-bold text-muted">Submission Priority</label>
-                      <select 
-                        className="form-select bg-light border-0"
-                        value={newPriority}
-                        onChange={(e) => setNewPriority(e.target.value)}
-                      >
-                        <option value="low">Low Priority</option>
-                        <option value="normal">Normal Priority</option>
-                        <option value="high">High Priority</option>
-                        <option value="urgent">Urgent Priority</option>
-                      </select>
-                    </div>
-
-                    <div className="col-md-6">
-                      <label className="form-label small fw-bold text-muted">Attachments</label>
+                      <label className="form-label small fw-bold text-muted">PDF / Documents Upload</label>
                       <input 
                         type="file" 
                         className="form-control bg-light border-0" 
+                        accept=".pdf,.doc,.docx,.xls,.xlsx,.txt"
                         multiple 
-                        onChange={(e) => setNewFiles(Array.from(e.target.files))}
+                        onChange={(e) => setNewDocFiles(Array.from(e.target.files))}
                       />
                     </div>
+
+                    <div className="col-md-6">
+                      <label className="form-label small fw-bold text-muted">Images Upload</label>
+                      <input 
+                        type="file" 
+                        className="form-control bg-light border-0" 
+                        accept="image/*"
+                        multiple 
+                        onChange={(e) => setNewImageFiles(Array.from(e.target.files))}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mb-3">
+                    <label className="form-label small fw-bold text-muted">Submission Priority</label>
+                    <select 
+                      className="form-select bg-light border-0"
+                      value={newPriority}
+                      onChange={(e) => setNewPriority(e.target.value)}
+                    >
+                      <option value="low">Low Priority</option>
+                      <option value="normal">Normal Priority</option>
+                      <option value="high">High Priority</option>
+                      <option value="urgent">Urgent Priority</option>
+                    </select>
                   </div>
                 </div>
                 <div className="modal-footer border-top-0 pt-0 px-4 pb-4">
@@ -637,61 +713,109 @@ export default function SubmissionsView() {
                 </div>
 
                 {/* Documents & Images Sections */}
-                <div className="row g-4 mb-4">
-                  
-                  {/* Documents attachment box */}
-                  <div className="col-12 col-lg-6">
-                    <div className="card border rounded-4 p-4 bg-white shadow-xs h-100">
-                      <div className="d-flex align-items-center gap-2 mb-3">
-                        <i className="bi bi-file-earmark-check text-success fs-5"></i>
-                        <h6 className="fw-bold mb-0 text-dark">Documents Attachment</h6>
-                      </div>
-                      <div className="d-flex flex-column gap-2">
-                        {selectedSub.files && selectedSub.files.length > 0 ? (
-                          selectedSub.files.map((file, idx) => (
-                            <div key={idx} className="d-flex align-items-center justify-content-between p-2 border rounded-3 bg-light">
-                              <span className="small fw-semibold text-truncate" style={{ maxWidth: '240px' }}><i className="bi bi-file-earmark-text me-1"></i>{file.name}</span>
-                              <div className="d-flex gap-2">
-                                <a href={file.url} className="btn btn-sm btn-outline-secondary bg-white small px-3 py-1" style={{ fontSize: '0.7rem' }}>View</a>
-                                <a href={file.url} className="btn btn-sm btn-primary small px-3 py-1" style={{ fontSize: '0.7rem', backgroundColor: '#0C4DA2' }}>Download</a>
-                              </div>
-                            </div>
-                          ))
-                        ) : (
-                          <span className="small text-muted">No documents uploaded.</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Images attachment box */}
-                  <div className="col-12 col-lg-6">
-                    <div className="card border rounded-4 p-4 bg-white shadow-xs h-100">
-                      <div className="d-flex align-items-center gap-2 mb-3">
-                        <i className="bi bi-image text-primary fs-5"></i>
-                        <h6 className="fw-bold mb-0 text-dark">Images Attachment</h6>
-                      </div>
-                      <div className="row g-2">
-                        {selectedSub.files && selectedSub.files.length > 0 ? (
-                          selectedSub.files.map((file, idx) => (
-                            <div key={idx} className="col-4">
-                              <div className="border rounded-3 p-2 text-center bg-light">
-                                <div className="text-muted small mb-1" style={{ fontSize: '0.625rem' }}>Image {idx + 1}</div>
-                                <i className="bi bi-image fs-1 text-secondary d-block my-2"></i>
-                                <span className="small text-muted text-truncate d-block" style={{ fontSize: '0.68rem' }}>{file.name}</span>
-                              </div>
-                            </div>
-                          ))
-                        ) : (
-                          <div className="col-12">
-                            <span className="small text-muted">No images uploaded.</span>
+                {(() => {
+                  const docFiles = selectedSub.files ? selectedSub.files.filter(f => f.type === 'document' || !f.name.match(/\.(jpg|jpeg|png|gif)$/i)) : [];
+                  const imgFiles = selectedSub.files ? selectedSub.files.filter(f => f.type === 'image' || f.name.match(/\.(jpg|jpeg|png|gif)$/i)) : [];
+                  return (
+                    <div className="row g-4 mb-4">
+                      
+                      {/* Documents attachment box */}
+                      <div className="col-12 col-lg-6">
+                        <div className="card border rounded-4 p-4 bg-white shadow-xs h-100">
+                          <div className="d-flex align-items-center gap-2 mb-3">
+                            <i className="bi bi-file-earmark-check text-success fs-5"></i>
+                            <h6 className="fw-bold mb-0 text-dark">Documents Attachment</h6>
                           </div>
-                        )}
+                          <div className="d-flex flex-column gap-2">
+                            {docFiles.length > 0 ? (
+                              docFiles.map((file, idx) => (
+                                <div key={idx} className="d-flex align-items-center justify-content-between p-2.5 border rounded-3 bg-light">
+                                  <span className="small fw-semibold text-truncate" style={{ maxWidth: '240px' }}>
+                                    <i className="bi bi-file-earmark-text me-1.5 text-secondary"></i>
+                                    {file.name}
+                                  </span>
+                                  <div className="d-flex gap-2">
+                                    <button 
+                                      onClick={() => handleViewFile(file)}
+                                      className="btn btn-sm fw-bold px-3 py-1" 
+                                      style={{ 
+                                        fontSize: '0.7rem', 
+                                        backgroundColor: '#f1f5f9', 
+                                        color: '#475569', 
+                                        border: '1px solid #cbd5e1',
+                                        borderRadius: '6px'
+                                      }}
+                                      onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#e2e8f0'; }}
+                                      onMouseOut={(e) => { e.currentTarget.style.backgroundColor = '#f1f5f9'; }}
+                                    >
+                                      View
+                                    </button>
+                                    <a 
+                                      href={file.url} 
+                                      download={file.name}
+                                      className="btn btn-sm fw-bold text-white px-3 py-1 text-decoration-none" 
+                                      style={{ 
+                                        fontSize: '0.7rem', 
+                                        backgroundColor: '#0C4DA2', 
+                                        border: 'none',
+                                        borderRadius: '6px'
+                                      }}
+                                      onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#0a3d82'; }}
+                                      onMouseOut={(e) => { e.currentTarget.style.backgroundColor = '#0C4DA2'; }}
+                                    >
+                                      Download
+                                    </a>
+                                  </div>
+                                </div>
+                              ))
+                            ) : (
+                              <span className="small text-muted">No documents uploaded.</span>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
 
-                </div>
+                      {/* Images attachment box */}
+                      <div className="col-12 col-lg-6">
+                        <div className="card border rounded-4 p-4 bg-white shadow-xs h-100">
+                          <div className="d-flex align-items-center gap-2 mb-3">
+                            <i className="bi bi-image text-primary fs-5"></i>
+                            <h6 className="fw-bold mb-0 text-dark">Images Attachment</h6>
+                          </div>
+                          <div className="row g-2">
+                            {imgFiles.length > 0 ? (
+                              imgFiles.map((file, idx) => (
+                                <div key={idx} className="col-4" onClick={() => handleViewFile(file)} style={{ cursor: 'pointer' }}>
+                                  <div 
+                                    className="border rounded-3 p-2 text-center" 
+                                    style={{ backgroundColor: '#f8fafc', transition: 'all 0.2s' }}
+                                    onMouseOver={(e) => { e.currentTarget.style.borderColor = '#0C4DA2'; e.currentTarget.style.backgroundColor = '#f0f4fa'; }}
+                                    onMouseOut={(e) => { e.currentTarget.style.borderColor = '#dee2e6'; e.currentTarget.style.backgroundColor = '#f8fafc'; }}
+                                  >
+                                    <div className="text-muted small mb-1" style={{ fontSize: '0.625rem' }}>Image {idx + 1}</div>
+                                    {file.url && file.url.startsWith('data:image/') ? (
+                                      <img src={file.url} alt={file.name} className="img-fluid rounded mb-2" style={{ maxHeight: '50px', objectFit: 'cover' }} />
+                                    ) : (
+                                      <i className="bi bi-image fs-1 text-secondary d-block my-2"></i>
+                                    )}
+                                    <span className="small text-muted text-truncate d-block" style={{ fontSize: '0.68rem' }} title={file.name}>
+                                      {file.name}
+                                    </span>
+                                  </div>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="col-12">
+                                <span className="small text-muted">No images uploaded.</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                    </div>
+                  );
+                })()}
 
                 {/* Processing and Completion URLs */}
                 <div className="row g-3 mb-4">
