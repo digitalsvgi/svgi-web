@@ -69,7 +69,7 @@ function AppContent() {
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
       
       {/* Main Content Body */}
-      <div className="main-content flex-grow-1" style={{ marginLeft: '270px', minHeight: '100vh', backgroundColor: '#f8fafc' }}>
+      <div className="main-content flex-grow-1">
         <Header pageTitle={getPageTitle()} />
         <div className="p-4">
           {renderView()}
