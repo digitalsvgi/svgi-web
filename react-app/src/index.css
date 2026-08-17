@@ -2035,3 +2035,35 @@ h1, h2, h3, h4, h5, h6 {
     gap: 0.625rem !important;
 }
 
+/* Specificity overrides to force branding text panel elements to be white */
+.split-left-panel h1,
+.split-left-panel h2,
+.split-left-panel h3,
+.split-left-panel h4,
+.split-left-panel h5,
+.split-left-panel h6,
+.split-left-panel p,
+.split-left-panel span,
+.split-left-panel div {
+    color: #ffffff !important;
+}
+.split-left-panel .text-white-50 {
+    color: rgba(255, 255, 255, 0.5) !important;
+}
+.split-left-panel .brand-banner-title {
+    color: #0C4DA2 !important;
+}
+.split-left-panel .brand-banner-subtitle {
+    color: #64748b !important;
+}
+.split-left-panel .left-panel-category {
+    color: #4EB849 !important;
+}
+.split-left-panel .left-panel-title span {
+    color: #4EB849 !important;
+}
+.split-left-panel .service-card-box i {
+    color: inherit !important;
+}
+
+
