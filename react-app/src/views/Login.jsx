@@ -1,28 +1,88 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { db } from '../firebase/firebaseConfig';
+import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, logout } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   
+  // Custom design states (Central Admin vs College Login)
+  const [loginMode, setLoginMode] = useState('admin'); // 'admin' or 'college'
+  const [collegesList, setCollegesList] = useState([]);
+  const [selectedCollegeId, setSelectedCollegeId] = useState('');
+
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Load active colleges list from Firestore to populate the dropdown select
+  useEffect(() => {
+    const loadColleges = async () => {
+      try {
+        const colSnap = await getDocs(collection(db, 'colleges'));
+        const list = [];
+        colSnap.forEach(doc => {
+          list.push({ id: doc.id, ...doc.data() });
+        });
+        setCollegesList(list);
+      } catch (err) {
+        console.error("Failed to load colleges for dropdown:", err);
+      }
+    };
+    loadColleges();
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!email || !password) {
-      return setError('Please fill in all fields.');
+      return setError('Please enter your email and password.');
+    }
+    if (loginMode === 'college' && !selectedCollegeId) {
+      return setError('Please select your institution / college.');
     }
 
     try {
       setError('');
       setLoading(true);
-      await login(email, password);
+
+      // 1. Authenticate with Firebase Authentication
+      const authResult = await login(email, password);
+      
+      // 2. Fetch the user's role profile from Firestore /users/{uid}
+      const userUid = authResult.user.uid;
+      const userDocRef = doc(db, 'users', userUid);
+      const userSnapshot = await getDoc(userDocRef);
+      
+      if (!userSnapshot.exists()) {
+        await logout();
+        return setError('Your user profile could not be verified in the database.');
+      }
+
+      const userData = userSnapshot.data();
+
+      // 3. Validation: Verify that login mode matches the user's profile role
+      if (loginMode === 'admin') {
+        if (userData.role !== 'super_admin' && userData.role !== 'admin') {
+          await logout();
+          return setError('Invalid credentials for Central Admin Login.');
+        }
+      } else if (loginMode === 'college') {
+        if (userData.role !== 'college_user') {
+          await logout();
+          return setError('Invalid credentials for College Login.');
+        }
+        if (userData.collegeId !== selectedCollegeId) {
+          await logout();
+          return setError('Incorrect college selection for this user credentials.');
+        }
+      }
+
     } catch (err) {
       console.error(err);
-      setError('Invalid email or password.');
+      setError('Invalid email, password, or role credentials.');
     } finally {
       setLoading(false);
     }
@@ -101,7 +161,7 @@ export default function Login() {
                   <i className="bi bi-building" style={{ color: '#4EB849', fontSize: '1.05rem' }}></i>
                 </div>
                 <div className="text-start">
-                  <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#0C4DA2', lineHeight: 1, marginBottom: '2px' }}>8+</div>
+                  <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#0C4DA2', lineHeight: 1, marginBottom: '2px' }}>{collegesList.length || 8}+</div>
                   <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Institutions</div>
                 </div>
               </div>
@@ -147,66 +207,125 @@ export default function Login() {
           
           <div className="w-100" style={{ maxWidth: '440px' }}>
             <div className="mb-4">
-              <h2 className="fw-bold text-dark mb-2">Welcome Back</h2>
-              <p className="text-muted">Enter your institutional credentials to access the CWM portal.</p>
+              <h2 className="fw-bold text-dark mb-2">Welcome <span style={{ color: '#4EB849' }}>Back!</span> 👋</h2>
+              <p className="text-muted">Sign in to continue to your dashboard</p>
             </div>
 
             {error && (
-              <div className="alert alert-danger d-flex align-items-center gap-2 border-0 rounded-4" style={{ background: 'rgba(239, 68, 68, 0.08)', color: '#ef4444' }}>
+              <div className="alert alert-danger d-flex align-items-center gap-2 border-0 rounded-4 mb-3" style={{ background: 'rgba(239, 68, 68, 0.08)', color: '#ef4444' }}>
                 <i className="bi bi-exclamation-triangle-fill"></i>
                 <div className="small fw-semibold">{error}</div>
               </div>
             )}
 
+            {/* Role / Scope Switcher Pills */}
+            <div className="form-role-pills mb-4 d-flex justify-content-between">
+              <button 
+                type="button" 
+                className={`form-role-pill-btn btn border-0 flex-fill text-center d-flex align-items-center justify-content-center gap-2 ${loginMode === 'admin' ? 'active' : ''}`} 
+                onClick={() => {
+                  setLoginMode('admin');
+                  setError('');
+                  setEmail('');
+                  setPassword('');
+                }}
+                style={{ padding: '0.7rem 1rem' }}
+              >
+                <i className="bi bi-bank"></i> Central Admin
+              </button>
+              <button 
+                type="button" 
+                className={`form-role-pill-btn btn border-0 flex-fill text-center d-flex align-items-center justify-content-center gap-2 ${loginMode === 'college' ? 'active' : ''}`} 
+                onClick={() => {
+                  setLoginMode('college');
+                  setError('');
+                  setEmail('');
+                  setPassword('');
+                }}
+                style={{ padding: '0.7rem 1rem' }}
+              >
+                <i className="bi bi-mortarboard"></i> College Login
+              </button>
+            </div>
+
             <form onSubmit={handleSubmit}>
+              
+              {/* Dynamic Institution Selection Dropdown (Only for College Login) */}
+              {loginMode === 'college' && (
+                <div className="mb-3">
+                  <label className="form-label small fw-bold text-muted" style={{ marginBottom: '0.45rem' }}>Select Institution / College</label>
+                  <select 
+                    id="college_id_select" 
+                    className="form-select"
+                    value={selectedCollegeId}
+                    onChange={(e) => setSelectedCollegeId(e.target.value)}
+                    style={{ height: '52px', borderRadius: '12px', backgroundColor: '#f8fafc', border: '1.5px solid #e2e8f0', fontWeight: '500', fontSize: '0.925rem' }}
+                    required
+                  >
+                    <option value="">&mdash; Choose Institution &mdash;</option>
+                    {collegesList.map((col) => (
+                      <option key={col.id} value={col.id}>
+                        {col.name} ({col.code})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               {/* Institutional Email Address */}
               <div className="mb-3">
-                <label className="form-label small fw-bold text-muted">Institutional Email Address</label>
-                <div className="input-group">
-                  <span className="input-group-text bg-light border-0" style={{ borderTopLeftRadius: '12px', borderBottomLeftRadius: '12px' }}>
-                    <i className="bi bi-envelope text-muted"></i>
-                  </span>
+                <label className="form-label small fw-bold text-muted">Email Address</label>
+                <div className="input-icon-wrapper">
+                  <span className="input-icon-left"><i className="bi bi-envelope"></i></span>
                   <input
                     type="email"
-                    className="form-control bg-light border-0"
-                    placeholder="you@srivenkateshwaraa.edu.in"
+                    id="email"
+                    className="form-control"
+                    placeholder={loginMode === 'admin' ? 'admin' : 'you@institution.edu'}
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    style={{ borderTopRightRadius: '12px', borderBottomRightRadius: '12px', padding: '0.75rem 1rem' }}
                     required
+                    autoFocus
                   />
                 </div>
               </div>
 
               {/* Password */}
               <div className="mb-4">
-                <label className="form-label small fw-bold text-muted">Secure Password</label>
-                <div className="input-group">
-                  <span className="input-group-text bg-light border-0" style={{ borderTopLeftRadius: '12px', borderBottomLeftRadius: '12px' }}>
-                    <i className="bi bi-lock text-muted"></i>
-                  </span>
+                <label className="form-label small fw-bold text-muted">Password</label>
+                <div className="input-icon-wrapper">
+                  <span className="input-icon-left"><i className="bi bi-lock"></i></span>
                   <input
-                    type="password"
-                    className="form-control bg-light border-0"
+                    type={showPassword ? 'text' : 'password'}
+                    id="password"
+                    className="form-control"
                     placeholder="••••••••"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    style={{ borderTopRightRadius: '12px', borderBottomRightRadius: '12px', padding: '0.75rem 1rem' }}
                     required
                   />
+                  <button 
+                    type="button" 
+                    className="password-toggle-icon" 
+                    onClick={() => setShowPassword(!showPassword)}
+                    title="Toggle password visibility" 
+                    style={{ position: 'absolute', right: '1.15rem', color: '#94a3b8', cursor: 'pointer', border: 'none', background: 'transparent', padding: '0' }}
+                  >
+                    <i className={`bi ${showPassword ? 'bi-eye' : 'bi-eye-slash'}`} style={{ fontSize: '1.1rem' }}></i>
+                  </button>
                 </div>
               </div>
 
               {/* Remember Me & Forgot Password */}
               <div className="d-flex justify-content-between align-items-center mb-4">
-                <div className="form-check">
+                <div className="form-check m-0 d-flex align-items-center gap-2">
                   <input
                     type="checkbox"
                     className="form-check-input"
                     id="rememberCheck"
                     checked={rememberMe}
                     onChange={(e) => setRememberMe(e.target.checked)}
-                    style={{ cursor: 'pointer' }}
+                    style={{ cursor: 'pointer', width: '17px', height: '17px', borderColor: '#cbd5e1', borderRadius: '4px' }}
                   />
                   <label className="form-check-label small fw-semibold text-muted" htmlFor="rememberCheck" style={{ cursor: 'pointer' }}>
                     Remember Me
@@ -221,12 +340,13 @@ export default function Login() {
               <button
                 type="submit"
                 disabled={loading}
-                className="btn btn-primary w-100 fw-bold d-flex justify-content-between align-items-center px-4 py-3"
+                className="btn btn-primary w-100 fw-bold d-flex justify-content-between align-items-center px-4 py-3 btn-submit-signin"
                 style={{
+                  height: '52px',
                   borderRadius: '12px',
                   backgroundColor: '#0C4DA2',
                   borderColor: '#0C4DA2',
-                  boxShadow: '0 4px 15px rgba(12, 77, 162, 0.35)'
+                  boxShadow: '0 4px 15px rgba(12, 77, 162, 0.2)'
                 }}
               >
                 <span>{loading ? 'Authenticating...' : 'Sign In'}</span>
