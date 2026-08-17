@@ -1,0 +1,6 @@
+# Ignore environments
+.env
+.env.local
+
+# Ignore uploads temporary storage folder
+uploads/
