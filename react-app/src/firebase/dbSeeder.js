@@ -81,46 +81,92 @@ const collegesData = [
   }
 ];
 
+const systemUsers = [
+  { name: 'Super Admin User', email: 'superadmin@example.com', password: 'admin123', role: 'super_admin', collegeId: null },
+  { name: 'Admin User', email: 'admin@example.com', password: 'admin123', role: 'admin', collegeId: null },
+  { name: 'Admin - SVMCHRC', email: 'venkateshwaraa1@gmail.com', password: 'password@1', role: 'college_user', collegeId: 'SVMCHRC' },
+  { name: 'Admin - SVDC', email: 'venkateshwaraa2@gmail.com', password: 'password@2', role: 'college_user', collegeId: 'SVDC' },
+  { name: 'Admin - ICON', email: 'venkateshwaraa3@gmail.com', password: 'password@3', role: 'college_user', collegeId: 'ICON' },
+  { name: 'Admin - SVCP', email: 'venkateshwaraa4@gmail.com', password: 'password@4', role: 'college_user', collegeId: 'SVCP' },
+  { name: 'Admin - SVCPS', email: 'venkateshwaraa5@gmail.com', password: 'password@5', role: 'college_user', collegeId: 'SVCPS' },
+  { name: 'Admin - SVCPH', email: 'venkateshwaraa6@gmail.com', password: 'password@6', role: 'college_user', collegeId: 'SVCPH' },
+  { name: 'Admin - SVCET', email: 'venkateshwaraa7@gmail.com', password: 'password@7', role: 'college_user', collegeId: 'SVCET' },
+  { name: 'Admin - SVCH', email: 'venkateshwaraa8@gmail.com', password: 'password@8', role: 'college_user', collegeId: 'SVCH' }
+];
+
 /**
- * Seeds base colleges and departments collections in Firestore
+ * Seeds base colleges, departments, and users collections in Firestore & Firebase Auth
  */
 export async function seedFirestore() {
   try {
-    // 1. Check if database is already seeded
+    // 1. Check if database is already seeded with colleges
     const colRef = collection(db, 'colleges');
     const q = query(colRef, limit(1));
     const querySnapshot = await getDocs(q);
-    if (!querySnapshot.empty) {
-      return { success: true, message: "Database is already seeded." };
-    }
+    
+    // Seed colleges and departments if empty
+    if (querySnapshot.empty) {
+      const batch = writeBatch(db);
 
-    const batch = writeBatch(db);
-
-    // 2. Insert Colleges and Departments
-    for (const cData of collegesData) {
-      // Create college document reference with custom ID matching its code
-      const collegeDocRef = doc(db, 'colleges', cData.code);
-      batch.set(collegeDocRef, {
-        name: cData.name,
-        code: cData.code,
-        email: cData.email,
-        status: 'active'
-      });
-
-      // Create departments under each college
-      for (const deptName of cData.departments) {
-        const deptDocId = `${cData.code}_${deptName.replace(/[^a-zA-Z0-9]/g, '_')}`;
-        const deptDocRef = doc(db, 'departments', deptDocId);
-        batch.set(deptDocRef, {
-          collegeId: cData.code,
-          name: deptName,
+      for (const cData of collegesData) {
+        // Create college doc
+        const collegeDocRef = doc(db, 'colleges', cData.code);
+        batch.set(collegeDocRef, {
+          name: cData.name,
+          code: cData.code,
+          email: cData.email,
           status: 'active'
         });
+
+        // Create department docs under each college
+        for (const deptName of cData.departments) {
+          const deptDocId = `${cData.code}_${deptName.replace(/[^a-zA-Z0-9]/g, '_')}`;
+          const deptDocRef = doc(db, 'departments', deptDocId);
+          batch.set(deptDocRef, {
+            collegeId: cData.code,
+            name: deptName,
+            status: 'active'
+          });
+        }
+      }
+      await batch.commit();
+    }
+
+    // 2. Register and Seed all Admin & College Users in Firebase Auth + Firestore
+    const functionsUrl = import.meta.env.VITE_CLOUD_FUNCTIONS_URL || 'https://us-central1-svgi-cwm-portal.cloudfunctions.net';
+    let userFailures = 0;
+
+    for (const u of systemUsers) {
+      try {
+        const response = await fetch(`${functionsUrl}/createSystemUser`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(u)
+        });
+        const resData = await response.json();
+        if (!resData.success) {
+          console.error(`Failed to register ${u.email}:`, resData.message);
+          userFailures++;
+        }
+      } catch (err) {
+        console.error(`Network error registering user ${u.email}:`, err);
+        userFailures++;
       }
     }
 
-    await batch.commit();
-    return { success: true, message: "Colleges and departments seeded successfully." };
+    if (userFailures > 0) {
+      return { 
+        success: false, 
+        message: `Database seeded, but ${userFailures} users failed to sync. Make sure your Firebase Cloud Functions are deployed.` 
+      };
+    }
+
+    return { 
+      success: true, 
+      message: "Colleges, departments, and auth users seeded successfully." 
+    };
   } catch (error) {
     console.error("Firestore seeding failed:", error);
     return { success: false, message: error.message };

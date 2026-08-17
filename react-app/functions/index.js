@@ -199,3 +199,65 @@ exports.deleteFromDrive = functions.https.onRequest(async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 });
+
+/**
+ * Cloud Function to create/sync auth users and Firestore user profiles
+ */
+exports.createSystemUser = functions.https.onRequest(async (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  if (req.method === 'OPTIONS') {
+    res.set('Access-Control-Allow-Methods', 'POST');
+    res.set('Access-Control-Allow-Headers', 'Content-Type');
+    res.status(204).send('');
+    return;
+  }
+
+  if (req.method !== 'POST') {
+    res.status(405).send('Method Not Allowed');
+    return;
+  }
+
+  try {
+    const { email, password, name, role, collegeId } = req.body;
+
+    if (!email || !password || !name || !role) {
+      res.status(400).json({ success: false, message: 'Missing required parameters.' });
+      return;
+    }
+
+    // 1. Create/Update user in Firebase Authentication
+    let userRecord;
+    try {
+      userRecord = await admin.auth().getUserByEmail(email);
+      await admin.auth().updateUser(userRecord.uid, {
+        password: password,
+        displayName: name
+      });
+    } catch (authError) {
+      if (authError.code === 'auth/user-not-found') {
+        userRecord = await admin.auth().createUser({
+          email: email,
+          password: password,
+          displayName: name
+        });
+      } else {
+        throw authError;
+      }
+    }
+
+    // 2. Set role profile metadata inside Firestore '/users' collection
+    await admin.firestore().collection('users').doc(userRecord.uid).set({
+      name: name,
+      email: email,
+      role: role,
+      collegeId: collegeId || null,
+      status: 'active'
+    });
+
+    res.status(200).json({ success: true, uid: userRecord.uid });
+  } catch (error) {
+    console.error("User creation error in Cloud Functions:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
